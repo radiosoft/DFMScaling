@@ -3,10 +3,13 @@ unit DFMScaling.Scaler;
 interface
 
 uses
-  System.Classes;
+  System.Classes, System.RegularExpressions;
 
 type
   TDfmScaling = class
+  private
+
+    class procedure FixLines(ALines: TStrings); static;
   public
     class function ScaleDown(ALines: TStrings; AClassGroup: TPersistentClass): Boolean; static;
   end;
@@ -26,7 +29,8 @@ type
 function DetectDesignType(ALines: TStrings): TDesignType;
 begin
   Result := TDesignType.DataModule;
-  for var S in ALines do begin
+  for var S in ALines do
+  begin
     { skip first and last line }
     if not S.StartsWith('  ') then Continue;
     { abort on child components }
@@ -221,6 +225,11 @@ function TFormScaler.Scale: Boolean;
 begin
   Result := False;
   if instance.PixelsPerInch = 96 then Exit;
+
+  // Radiosoft fix
+  instance.Top := 0;
+  instance.Left := 0;
+
   instance.ScaleForPPI(96);
   Result := True;
 end;
@@ -234,6 +243,11 @@ var
 begin
   Result := False;
   if instance.PixelsPerInch = 96 then Exit;
+
+  // Radiosoft fix
+  instance.Top := 0;
+  instance.Left := 0;
+
   TFrameHack(Instance).SetDesignInstance(True);
   FDesignForm := TForm.Create(nil);
   try
@@ -265,10 +279,63 @@ begin
     scaler.LoadInstance;
     if not scaler.Scale then Exit;
     scaler.StoreInstance;
+
+    // Radiosoft fix
+    FixLines(scaler.Lines);
+
     Result := True;
   finally
     scaler.Free;
   end;
+end;
+
+class procedure TDfmScaling.FixLines(ALines: TStrings);
+
+  function ReplaceLinesRe(const Find, Replace: String): Boolean;
+  begin
+    Result := False;
+    for var I := 0 to ALines.Count - 1 do
+    begin
+      var ResStr := TRegEx.Replace(ALines[I], Find, Replace);
+      Result := Result or (ALines[I] <> ResStr);
+      ALines[I] := ResStr;
+    end;
+  end;
+
+  procedure RemoveEmptyLines;
+  begin
+    for var I := ALines.Count - 1 downto 0 do
+      if ALines[I] = '' then
+        ALines.Delete(I);
+  end;
+
+  procedure InsertParam(const Param: String);
+  begin
+
+    for var I := 1 to ALines.Count - 1 do
+    begin
+      var L := ALines[I].Trim();
+      if TRegEx.IsMatch(L, '(Left|Top)') then
+        Continue;
+        if (L.Compare(L, Param) > 0) or L.StartsWith('object ') or (L = 'end') then
+      begin
+        ALines.Insert(I, '  ' + Param);
+        Break;
+      end;
+    end;
+  end;
+
+begin
+  ReplaceLinesRe('^ +Explicit.*$', '');
+  ReplaceLinesRe('^ +Margins\..* = 3$', '');
+  ReplaceLinesRe('^ +MinSize = 30$', '');
+  ReplaceLinesRe('^ +ItemHeight = 16$', '');
+  ReplaceLinesRe('^ +SubCaption\.Size = (8|9)$', '');
+  ReplaceLinesRe('^ +Items\.ItemData = \{.*$', '');
+  RemoveEmptyLines;
+
+  InsertParam('OldCreateOrder = False');
+  InsertParam('PixelsPerInch = 96');
 end;
 
 constructor TEventHandler.Create;
@@ -315,3 +382,4 @@ begin
 end;
 
 end.
+

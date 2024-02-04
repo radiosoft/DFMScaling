@@ -1,4 +1,9 @@
 # DFMScaling
+
+Fork from https://github.com/UweRaabe/DFMScaling
+
+# Description
+
 Stores DFM files as 96 DPI while allowing to design in High DPI.
 
 The approach used registers a notifier to each open DFM editor to intercept its AfterSave event. It loads the just saved DFM file, creates a seprate instance from it, scales it down to 96 dpi and saves overwriting the previous DFM file.
